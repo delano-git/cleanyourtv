@@ -301,6 +301,15 @@
          "show_stats": true. Nothing is read, and the clock does not move, while this is false. -->
     <bool name="show_stats">false</bool>
 
+    <!-- Weather under the clock: the current conditions with the city, and the next three days (Open-Meteo).
+         With weather_lat and weather_lon empty the place is guessed from the TV's public IP address
+         (ipwho.is); set both (e.g. 25.2048 and 55.2708) and weather_city to pin it. -->
+    <bool name="show_weather">true</bool>
+    <bool name="weather_fahrenheit">false</bool>
+    <string name="weather_lat" translatable="false"></string>
+    <string name="weather_lon" translatable="false"></string>
+    <string name="weather_city" translatable="false"></string>
+
     <!-- Time-of-day backdrop behind everything: a dark gradient that follows the clock, with a warm
          horizon glow around sunrise and sunset. 0 keeps the plain background (the default); 1 to 100
          sets its opacity. Around 60 reads clearly without hiding a wallpaper. Can also be set with

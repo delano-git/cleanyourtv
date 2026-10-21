@@ -275,12 +275,30 @@
 
             </LinearLayout>
 
+            <!-- Current weather and the next three days (config.xml show_weather). Filled in code; gone until
+                 the first reading arrives. Outside leftBlock so the top buttons stay level with the clock; the negative
+                 bottom margin cancels its height so it floats over the free space and the dock does not move. -->
+            <LinearLayout
+                android:id="@+id/weather"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_below="@id/leftBlock"
+                android:layout_alignStart="@id/leftBlock"
+                android:layout_alignEnd="@id/leftBlock"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="-70dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:focusable="false"
+                android:visibility="gone" />
+
             <!-- Shown only when show_stats is on. Outside leftBlock, so the top buttons stay level with the clock
                  row; gone, it takes no space. -->
             <TextView
                 android:id="@+id/stats"
                 android:layout_width="wrap_content"
-                android:layout_below="@id/leftBlock"
+                android:layout_below="@id/weather"
                 android:layout_alignStart="@id/leftBlock"
                 android:gravity="left"
                 android:layout_height="wrap_content"

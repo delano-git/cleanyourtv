@@ -344,6 +344,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (festive) updateWifiLabel();
             sky.update();
             wallpaperPlayer.update();
+            refreshWeather();
             handler.postDelayed(this, MINUTE_MS);
         }
     };
@@ -443,6 +444,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         raceHeadline = findViewById(R.id.raceHeadline);
         raceSessions = findViewById(R.id.raceSessions);
         showStats = cfg.showStats;
+        weatherBox = findViewById(R.id.weather);
+        showWeather = getResources().getBoolean(R.bool.show_weather) && weatherBox != null;
         shamsi = cfg.shamsiDate;
         greetingName = cfg.greetingName;
         if (shamsi) {
@@ -557,6 +560,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                // The weather floats over the free space above the grid: fade it out once the grid has scrolled.
+                if (weatherBox != null) {
+                    float a = rv.computeVerticalScrollOffset() > 0 ? 0f : 1f;
+                    if (weatherBox.getAlpha() != a) weatherBox.animate().alpha(a).setDuration(reducedMotion ? 0 : 150).start();
+                }
                 if (!glassShown) return;
                 glassTargetY -= dy;
                 glassScrollShift -= dy;
@@ -855,6 +863,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (showStats) startStats();
         sky.update();
         wallpaperPlayer.start();
+        refreshWeather();
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && diya != null) {
             diya.start();
@@ -1895,6 +1904,117 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         glass.animate().cancel();
         if (animations && !reducedMotion) glass.animate().alpha(0f).setDuration(160).start();
         else glass.setAlpha(0f);
+    }
+
+    // ---- weather under the clock (config.xml show_weather) ---------------------------------------------
+
+    private LinearLayout weatherBox;
+    private boolean showWeather;
+    private boolean weatherFetching;
+    private Weather weather;
+
+    /** Shows the cached reading at once, and fetches a new one in the background when it is over 30 minutes old. */
+    private void refreshWeather() {
+        if (!showWeather) return;
+        if (weather == null) {
+            weather = Weather.cached(this);
+            if (weather != null) renderWeather();
+        }
+        if (weatherFetching || (weather != null && System.currentTimeMillis() - weather.fetchedAt < Weather.MAX_AGE_MS)) return;
+        weatherFetching = true;
+        final android.content.Context app = getApplicationContext();
+        final boolean f = getResources().getBoolean(R.bool.weather_fahrenheit);
+        final String city = getString(R.string.weather_city).trim();
+        final double lat = parseCoord(getString(R.string.weather_lat)), lon = parseCoord(getString(R.string.weather_lon));
+        new Thread(() -> {
+            Weather w = Weather.fetch(app, lat, lon, city, f);
+            handler.post(() -> {
+                weatherFetching = false;
+                if (w == null || isDestroyed()) return;
+                weather = w;
+                renderWeather();
+            });
+        }, "weather").start();
+    }
+
+    private static double parseCoord(String s) {
+        try {
+            return Double.parseDouble(s.trim());
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
+    }
+
+    private TextView weatherText(String text, float sp, int color, android.graphics.Typeface face, float spacing) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        t.setTypeface(face);
+        t.setLetterSpacing(spacing);
+        t.setSingleLine(true);
+        t.setIncludeFontPadding(false);
+        t.setPadding(0, 0, (int) (4 * density), 0);   // letter spacing and italic overhang would clip the last glyph
+        return t;
+    }
+
+    private void renderWeather() {
+        Weather w = weather;
+        if (w == null || weatherBox == null) return;
+        android.graphics.Typeface regular = getResources().getFont(R.font.outfit_regular);
+        android.graphics.Typeface medium = getResources().getFont(R.font.outfit_medium);
+        weatherBox.removeAllViews();
+
+        // Now: icon, temperature, city.
+        ImageView now = new ImageView(this);
+        now.setImageDrawable(new Weather.Icon(w.code, w.isDay));
+        weatherBox.addView(now, new LinearLayout.LayoutParams((int) (40 * density), (int) (40 * density)));
+        LinearLayout nowText = new LinearLayout(this);
+        nowText.setOrientation(LinearLayout.VERTICAL);
+        nowText.setPadding((int) (10 * density), 0, 0, 0);
+        nowText.addView(weatherText(w.temp + "°", 24, 0xFFFFFFFF, medium, 0f));
+        if (!w.city.isEmpty()) {
+            TextView city = weatherText(w.city.toUpperCase(Locale.getDefault()), 11, 0x99FFFFFF, medium, 0.16f);
+            city.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            city.setMaxWidth((int) (150 * density));
+            nowText.addView(city);
+        }
+        weatherBox.addView(nowText);
+
+        // Next three days.
+        for (Weather.Day d : w.days) {
+            View sep = new View(this);
+            sep.setBackgroundColor(0x33FFFFFF);
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams((int) density, (int) (30 * density));
+            sp.setMarginStart((int) (16 * density));
+            sp.setMarginEnd((int) (16 * density));
+            weatherBox.addView(sep, sp);
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setGravity(Gravity.CENTER_HORIZONTAL);
+            String name;
+            try {
+                name = LocalDate.parse(d.date).getDayOfWeek()
+                        .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault()).toUpperCase(Locale.getDefault());
+            } catch (Exception e) {
+                name = "";
+            }
+            TextView dayName = weatherText(name, 11, 0x99FFFFFF, medium, 0.16f);
+            dayName.setGravity(Gravity.CENTER_HORIZONTAL);
+            col.addView(dayName, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            ImageView icon = new ImageView(this);
+            icon.setImageDrawable(new Weather.Icon(d.code, true));
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams((int) (24 * density), (int) (24 * density));
+            ip.topMargin = (int) (2 * density);
+            ip.bottomMargin = (int) (2 * density);
+            col.addView(icon, ip);
+            TextView range = weatherText(d.high + "° / " + d.low + "°", 12, 0xD9FFFFFF, regular, 0.02f);
+            range.setGravity(Gravity.CENTER_HORIZONTAL);
+            col.addView(range, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            // Fixed width: single-line text measured with letter spacing comes out a glyph short on some TV builds.
+            weatherBox.addView(col, new LinearLayout.LayoutParams((int) (84 * density), LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+        weatherBox.setVisibility(View.VISIBLE);
     }
 
     // ---- optional system stats (config.xml show_stats) --------------------------------------------
